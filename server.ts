@@ -4,7 +4,7 @@ import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { initializeApp } from "firebase/app";
-import { getFirestore, doc, getDoc, setDoc, getDocFromServer } from "firebase/firestore";
+import { initializeFirestore, doc, getDoc, setDoc, getDocFromServer, setLogLevel } from "firebase/firestore";
 import { 
   UserRole, 
   StaffSpecialty, 
@@ -37,7 +37,14 @@ if (fs.existsSync(CONFIG_FILE)) {
   try {
     const firebaseConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8"));
     const firebaseApp = initializeApp(firebaseConfig);
-    db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
+    
+    // Suppress verbose cancellation logs and warning messages from standard output
+    setLogLevel("error");
+
+    // Initialize Firestore on server-side with experimentalForceLongPolling to handle Cloud Run stream terminations elegantly
+    db = initializeFirestore(firebaseApp, {
+      experimentalForceLongPolling: true
+    }, firebaseConfig.firestoreDatabaseId);
     console.log("[Firebase] Successfully initialized server-side connection to Firestore database:", firebaseConfig.firestoreDatabaseId);
     
     // Validate connection to Firestore as per SKILL.md rules
