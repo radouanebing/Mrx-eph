@@ -1,73 +1,176 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Employee, UserRole } from "../types.js";
-import { db } from "../firebaseConfig"; // تأكد من مسار ملف الإعدادات
-import { collection, onSnapshot } from "firebase/firestore";
 import { ShieldCheck, Lock, User, Eye, EyeOff, Activity, AlertCircle, KeyRound } from "lucide-react";
 
 interface LoginPortalProps {
+  employees: Employee[];
   onLoginSuccess: (employee: Employee) => void;
 }
 
-export default function LoginPortal({ onLoginSuccess }: LoginPortalProps) {
-  const [employees, setEmployees] = useState<Employee[]>([]);
+export default function LoginPortal({ employees, onLoginSuccess }: LoginPortalProps) {
   const [selectedEmpId, setSelectedEmpId] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // جلب البيانات من Firebase لحظياً
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, "employees"), (snapshot) => {
-      const empList = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as Employee));
-      setEmployees(empList);
-    });
-    return () => unsub();
-  }, []);
-
+  // Filter only active employees
   const activeEmployees = employees.filter((e) => e.active !== false);
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
+     e.preventDefault();
+     setError(null);
 
-    if (!selectedEmpId) {
-      setError("الرجاء اختيار اسم الموظف/العامل أولاً.");
-      return;
-    }
+     if (!selectedEmpId) {
+       setError("الرجاء اختيار اسم الموظف/العامل أولاً.");
+       return;
+     }
 
-    const employee = employees.find((emp) => emp.id === selectedEmpId);
-    if (!employee) {
-      setError("الموظف غير موجود في النظام.");
-      return;
-    }
+     const employee = employees.find((emp) => emp.id === selectedEmpId);
+     if (!employee) {
+       setError("الموظف غير موجود في النظام.");
+       return;
+     }
 
-    const enteredPassword = password.trim();
-    const correctPassword = (employee.password || "123456").trim();
+     // Validate password (default is 123456)
+     const enteredPassword = password.trim();
+     const correctPassword = (employee.password || "123456").trim();
 
-    if (enteredPassword === correctPassword) {
-      onLoginSuccess(employee);
-    } else {
-      setError("كلمة المرور غير صحيحة!");
-    }
+     if (enteredPassword === correctPassword) {
+       onLoginSuccess(employee);
+     } else {
+       setError("كلمة المرور غير صحيحة! يرجى إدخال كلمة المرور مع الحساب.");
+     }
   };
 
   return (
-    // استبدل هذا الجزء داخل LoginPortal.tsx في الـ return الخاص بك:
-<select
-  id="employee-select"
-  className="w-full bg-slate-800 text-white p-3 rounded-lg border border-slate-700 focus:border-sky-500 outline-none"
-  value={selectedEmpId}
-  onChange={(e) => setSelectedEmpId(e.target.value)}
->
-  <option value="">-- اختر اسمك للولوج السريع --</option>
-  {employees.map((emp) => (
-    <option key={emp.id} value={emp.id}>
-      {emp.name} ({emp.role === "MANAGER" ? "مدير مصلحة" : "موظف مصلحة"})
-    </option>
-  ))}
-</select>
+    <div className="min-h-screen bg-slate-900 flex flex-col justify-center items-center py-12 px-4 sm:px-6 lg:px-8 font-sans transition-all relative overflow-hidden" id="hospital-login-portal">
+      {/* Decorative ambient background drops */}
+      <div className="absolute top-[-10%] right-[-10%] w-[350px] h-[350px] rounded-full bg-teal-500/10 blur-[120px] pointer-events-none"></div>
+      <div className="absolute bottom-[-10%] left-[-10%] w-[350px] h-[350px] rounded-full bg-sky-500/10 blur-[120px] pointer-events-none"></div>
+
+      <div className="max-w-md w-full space-y-8 bg-slate-800 border border-slate-700/60 p-8 rounded-3xl shadow-2xl relative z-10 transition-all">
+        
+        {/* Top Branding Header */}
+        <div className="text-center space-y-3">
+          <div className="h-16 w-16 bg-gradient-to-tr from-teal-500 to-sky-500 text-slate-900 rounded-2xl flex items-center justify-center mx-auto shadow-xl shadow-teal-500/15">
+            <Activity className="h-9 w-9 animate-pulse" />
+          </div>
+          <div className="space-y-1">
+            <h2 className="text-xl font-black text-white tracking-tight">بوابة MRX_RN والتحكم الذكي بمصلحة الأشعة</h2>
+            <p className="text-xs text-slate-400">سجل الدخول لعرض مناوباتك، تبادل الساعات أو تسيير الإدارة</p>
+          </div>
+        </div>
+
+        {/* Informational Credentials Helper Callout */}
+        <div className="bg-slate-750 border border-slate-700 bg-slate-900/50 p-4 rounded-2xl space-y-2">
+          <h4 className="text-[11px] font-black text-teal-400 flex items-center gap-1">
+            <ShieldCheck className="h-3.5 w-3.5" />
+            بيانات تجريبية للمعاينة والاختبار (اسم العامل وكلمة السر)
+          </h4>
+          <p className="text-[10px] text-slate-400 leading-relaxed">
+            جميع حسابات الكادر مسجلة بكلمة مرور افتراضية موحدة وهي: <strong className="text-white bg-slate-750 px-1.5 py-0.5 rounded border border-slate-650 font-mono text-[11px]">123456</strong>. يمكنك الاختيار أدناه:
+          </p>
+          <div className="grid grid-cols-2 gap-1.5 pt-1 text-[10px]">
+            <div className="bg-slate-800/85 p-2 rounded-xl border border-slate-700/50">
+              <span className="block text-slate-400">المدير (صلاحية كاملة):</span>
+              <strong className="text-sky-300">د. أحمد منصور</strong>
+            </div>
+            <div className="bg-slate-800/85 p-2 rounded-xl border border-slate-700/50">
+              <span className="block text-slate-400">الموظف (صلاحية غلق وتحديد):</span>
+              <strong className="text-amber-300">خالد العتيبي</strong>
+            </div>
+          </div>
+        </div>
+
+        {/* Login Form */}
+        <form className="mt-8 space-y-6" onSubmit={handleSubmit} dir="rtl">
+          {error && (
+            <div className="bg-rose-500/10 border border-rose-500/30 p-3.5 rounded-xl flex items-start gap-2.5 text-rose-300 text-xs text-right animate-shake">
+              <AlertCircle className="h-4.5 w-4.5 text-rose-400 shrink-0 mt-0.5" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            {/* Employee Selector field */}
+            <div>
+              <label htmlFor="employee-select" className="block text-[11px] font-bold text-slate-300 mb-1.5 r">
+                اسم العامل / الموظف:
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-500">
+                  <User className="h-4 w-4" />
+                </div>
+                <select
+                  id="employee-select"
+                  value={selectedEmpId}
+                  onChange={(e) => {
+                    setSelectedEmpId(e.target.value);
+                    setError(null);
+                  }}
+                  className="block w-full pr-10 pl-3 py-3 bg-slate-900 border border-slate-7 w-full text-xs text-slate-100 bg-slate-900 border-slate-700 rounded-xl focus:ring-1 focus:ring-teal-500 focus:outline-none focus:border-teal-500 cursor-pointer text-right appearance-none"
+                  style={{ backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`, backgroundPosition: "left 0.75rem center", backgroundSize: "1em", backgroundRepeat: "no-repeat" }}
+                >
+                  <option value="" className="text-slate-500">-- اختر اسمك للولوج السريع --</option>
+                  {activeEmployees.map((emp) => (
+                    <option key={emp.id} value={emp.id} className="bg-slate-850 text-white">
+                      {emp.name} ({emp.role === UserRole.MANAGER ? "مدير مصلحة" : emp.role === UserRole.SUPERVISOR ? "مشرف مناوبات" : "موظف مصلحة"})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Password input */}
+            <div>
+              <label htmlFor="password-input" className="block text-[11px] font-bold text-slate-300 mb-1.5">
+                كلمة السر للمشرفين والعمال:
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-500">
+                  <Lock className="h-4 w-4" />
+                </div>
+                <input
+                  id="password-input"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  required
+                  placeholder="أدخل كلمة مرور حسابك"
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setError(null);
+                  }}
+                  className="block w-full pr-10 pl-10 py-3 text-xs text-slate-100 bg-slate-900 border border-slate-750 border-slate-700/80 rounded-xl focus:ring-1 focus:ring-teal-500 focus:outline-none focus:border-teal-500 text-right font-sans placeholder-slate-650"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-500 hover:text-slate-300 focus:outline-none cursor-pointer"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <button
+              type="submit"
+              className="group relative w-full flex items-center justify-center gap-2 py-3 px-4 border border-transparent text-xs font-black rounded-xl text-slate-950 bg-gradient-to-r from-teal-400 to-sky-400 hover:from-teal-300 hover:to-sky-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 shadow-lg shadow-teal-500/10 transition-all cursor-pointer"
+            >
+              <KeyRound className="h-4 w-4 text-slate-950" />
+              <span>تأكيد وتسجيل الدخول للمصلحة</span>
+            </button>
+          </div>
+        </form>
+
+        <div className="text-center pt-2">
+          <p className="text-[10px] text-slate-500 font-sans">
+            نظام المراقبة والأمان العالي © MRX_RN
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }
