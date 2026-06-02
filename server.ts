@@ -1025,11 +1025,12 @@ app.post("/api/gemini/diagnostics-report", async (req, res) => {
 
 // --- VITE MIDDLEWARE HANDLING OR STAGE SERVING ---
 async function startServer() {
-  // Sync latest cloud state on startup
-  try {
-    await syncStateFromFirestore();
-  } catch (err) {
-    console.error("[Startup Sync] Failed to sync remote Firestore state:", err);
+  // Sync latest cloud state on startup as non-blocking background process
+  if (db) {
+    console.log("[Startup] Initializing background cloud synchronization from Firestore...");
+    syncStateFromFirestore().catch((err) => {
+      console.error("[Startup Sync] Non-blocking background sync failed:", err);
+    });
   }
 
   if (process.env.NODE_ENV !== "production") {
