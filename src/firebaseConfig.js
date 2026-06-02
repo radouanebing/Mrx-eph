@@ -1,4 +1,4 @@
-import { initializeApp, getApps, getApp } from "firebase/app";
+import { initializeApp, getApps } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -10,7 +10,7 @@ const firebaseConfig = {
   appId: "1:289992860788:web:02dbf98d5f9c1db5bc1d21"
 };
 
-// فحص هل تم تشغيل التطبيق مسبقاً؟
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+// الحل الجذري: لا ننشئ التطبيق إلا إذا لم يكن موجوداً
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
 
 export const db = getFirestore(app);
