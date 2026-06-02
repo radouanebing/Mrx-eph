@@ -1,7 +1,6 @@
-import { initializeApp } from "firebase/app";
+import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 
-// هذه هي الإعدادات الخاصة بمشروعك الحالي
 const firebaseConfig = {
   apiKey: "AIzaSyBd-w-8ilUbkbTgYTE6_xe5NOcPfelLxAA",
   authDomain: "optimistic-doodad-l9fkf.firebaseapp.com",
@@ -11,6 +10,7 @@ const firebaseConfig = {
   appId: "1:289992860788:web:02dbf98d5f9c1db5bc1d21"
 };
 
-// تهيئة Firebase والاتصال بقاعدة البيانات
-const app = initializeApp(firebaseConfig);
+// فحص هل تم تشغيل التطبيق مسبقاً؟
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+
 export const db = getFirestore(app);
