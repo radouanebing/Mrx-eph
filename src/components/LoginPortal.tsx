@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Employee, UserRole } from "../types.js";
-import { db } from "./firebaseConfig"; // تأكد من مسار ملف الإعدادات
+import { db } from "../firebaseConfig"; // تأكد من مسار ملف الإعدادات
 import { collection, onSnapshot } from "firebase/firestore";
 import { ShieldCheck, Lock, User, Eye, EyeOff, Activity, AlertCircle, KeyRound } from "lucide-react";
 
