@@ -55,11 +55,19 @@ export default function LoginPortal({ onLoginSuccess }: LoginPortalProps) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col justify-center items-center py-12 px-4 sm:px-6 lg:px-8 font-sans transition-all relative overflow-hidden" id="hospital-login-portal">
-       {/* (باقي كود التصميم كما هو دون تغيير لضمان الشكل) */}
-       {/* ... الجزء الخاص بالـ UI ... */}
-       {/* تأكد فقط أن الـ select والـ input يستمران في العمل كما كانا */}
-       {/* ... */}
-    </div>
+    // استبدل هذا الجزء داخل LoginPortal.tsx في الـ return الخاص بك:
+<select
+  id="employee-select"
+  className="w-full bg-slate-800 text-white p-3 rounded-lg border border-slate-700 focus:border-sky-500 outline-none"
+  value={selectedEmpId}
+  onChange={(e) => setSelectedEmpId(e.target.value)}
+>
+  <option value="">-- اختر اسمك للولوج السريع --</option>
+  {employees.map((emp) => (
+    <option key={emp.id} value={emp.id}>
+      {emp.name} ({emp.role === "MANAGER" ? "مدير مصلحة" : "موظف مصلحة"})
+    </option>
+  ))}
+</select>
   );
 }
