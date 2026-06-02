@@ -3,6 +3,8 @@ import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
+import { initializeApp } from "firebase/app";
+import { getFirestore, doc, getDoc, setDoc, getDocFromServer } from "firebase/firestore";
 import { 
   UserRole, 
   StaffSpecialty, 
@@ -26,6 +28,34 @@ const app = express();
 const PORT = 3000;
 
 app.use(express.json());
+
+// Load Firebase Config and initialize Connection
+const CONFIG_FILE = path.join(process.cwd(), "firebase-applet-config.json");
+let db: any = null;
+
+if (fs.existsSync(CONFIG_FILE)) {
+  try {
+    const firebaseConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8"));
+    const firebaseApp = initializeApp(firebaseConfig);
+    db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
+    console.log("[Firebase] Successfully initialized server-side connection to Firestore database:", firebaseConfig.firestoreDatabaseId);
+    
+    // Validate connection to Firestore as per SKILL.md rules
+    const testConnection = async () => {
+      try {
+        await getDocFromServer(doc(db, "test", "connection"));
+        console.log("[Firebase] Connection test succeeded.");
+      } catch (error) {
+        if (error instanceof Error && error.message.includes("the client is offline")) {
+          console.error("[Firebase] Warning: Please check your Firebase configuration or network.");
+        }
+      }
+    };
+    testConnection();
+  } catch (err) {
+    console.error("[Firebase] Error reading or initializing Firebase:", err);
+  }
+}
 
 // Paths
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -397,6 +427,54 @@ const readState = (): RadiologyState => {
 
 const saveState = (state: RadiologyState) => {
   fs.writeFileSync(DB_FILE, JSON.stringify(state, null, 2), "utf-8");
+  if (db) {
+    const docRef = doc(db, "state", "radiology_state");
+    setDoc(docRef, state)
+      .then(() => {
+        console.log("[Firebase] State successfully saved and synced dynamically to cloud Firestore.");
+      })
+      .catch((error) => {
+        console.error("[Firebase] Error saving state to Firestore:", error);
+        const errInfo = {
+          error: error instanceof Error ? error.message : String(error),
+          operationType: "write",
+          path: "state/radiology_state",
+          authInfo: {
+            userId: "server-admin",
+            providerInfo: []
+          }
+        };
+        console.error("Firestore Error: ", JSON.stringify(errInfo));
+      });
+  }
+};
+
+const syncStateFromFirestore = async () => {
+  if (!db) return;
+  try {
+    console.log("[Firebase] Pulling remote database state from Firestore on boot...");
+    const docRef = doc(db, "state", "radiology_state");
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      const remoteState = docSnap.data() as RadiologyState;
+      fs.writeFileSync(DB_FILE, JSON.stringify(remoteState, null, 2), "utf-8");
+      console.log("[Firebase] Local cache successfully synchronized from remote cloud Firestore.");
+    } else {
+      console.log("[Firebase] No existing state found in Firestore. Seeding to Firestore on next user change.");
+    }
+  } catch (error) {
+    console.error("[Firebase] Error loading state from Firestore on startup:", error);
+    const errInfo = {
+      error: error instanceof Error ? error.message : String(error),
+      operationType: "get",
+      path: "state/radiology_state",
+      authInfo: {
+        userId: "server-admin",
+        providerInfo: []
+      }
+    };
+    console.error("Firestore Error: ", JSON.stringify(errInfo));
+  }
 };
 
 // --- GET Entire State ---
@@ -940,6 +1018,13 @@ app.post("/api/gemini/diagnostics-report", async (req, res) => {
 
 // --- VITE MIDDLEWARE HANDLING OR STAGE SERVING ---
 async function startServer() {
+  // Sync latest cloud state on startup
+  try {
+    await syncStateFromFirestore();
+  } catch (err) {
+    console.error("[Startup Sync] Failed to sync remote Firestore state:", err);
+  }
+
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },

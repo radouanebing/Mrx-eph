@@ -1,0 +1,60 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // 1. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Hardened global helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Collections matches
+    match /employees/{employeeId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    match /shifts/{shiftId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    match /swapRequests/{swapRequestId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    match /absences/{absenceId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    match /evaluations/{evaluationId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    match /leaves/{leaveId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    match /notices/{noticeId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    match /settings/{settingsId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+  }
+}
