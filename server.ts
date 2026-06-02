@@ -29,6 +29,12 @@ const PORT = 3000;
 
 app.use(express.json());
 
+// Debugging incoming request logging middleware
+app.use((req, res, next) => {
+  console.log(`[Request logger] ${req.method} ${req.url} - Content-Type requested: ${req.headers.accept}`);
+  next();
+});
+
 // Load Firebase Config and initialize Connection
 const CONFIG_FILE = path.join(process.cwd(), "firebase-applet-config.json");
 let db: any = null;
@@ -422,6 +428,33 @@ const readState = (): RadiologyState => {
       });
     }
 
+    // Ensure radiation monitoring data exists
+    if (!parsed.radiationData) {
+      parsed.radiationData = {
+        roomReadings: [
+          { id: "room-1", roomName: "غرفة الأشعة السينية الرقمية (Digital X-Ray Suite)", roomCode: "XRAY-A", reading: 0.15, status: "SAFE", lastChecked: new Date().toISOString().split('T')[0] },
+          { id: "room-2", roomName: "جناح التصوير المقطعي محاكي المقطع (CT Scanner Room)", roomCode: "CT-SCAN-B", reading: 1.25, status: "WARNING", lastChecked: new Date().toISOString().split('T')[0] },
+          { id: "room-3", roomName: "غرفة الرنين المغناطيسي الفائق (MRI Suite)", roomCode: "MRI-C", reading: 0.04, status: "SAFE", lastChecked: new Date().toISOString().split('T')[0] },
+          { id: "room-4", roomName: "مختبر الطب النووي النشط (Nuclear Medicine)", roomCode: "NUC-MED-D", reading: 5.80, status: "DANGER", lastChecked: new Date().toISOString().split('T')[0] },
+          { id: "room-5", roomName: "غرفة فحص التصوير بالسونار (Ultrasound Room)", roomCode: "US-E", reading: 0.02, status: "SAFE", lastChecked: new Date().toISOString().split('T')[0] }
+        ],
+        calibrations: [
+          { id: "cal-1", deviceName: "عداد جيجر المحمول (Eberline Geiger Counter)", serialNumber: "GM-98241", calibrationDate: "2026-01-10", expiryDate: "2027-01-10", batteryPercent: 92, calibratedBy: "وكالة الأمان النووي والوقاية من الإشعاعات", status: "PASSED" },
+          { id: "cal-2", deviceName: "مقياس مسح الجرعات الغرفي (Ludlum Area Monitor 3)", serialNumber: "AM-43289", calibrationDate: "2025-08-15", expiryDate: "2026-08-15", batteryPercent: 88, calibratedBy: "معهد بحوث ومعايرة أجهزة القياس", status: "PASSED" },
+          { id: "cal-3", deviceName: "غرفة معايرة تسرب الأشعة (Fluke Pro-Ion Chamber)", serialNumber: "IC-11048", calibrationDate: "2024-11-20", expiryDate: "2025-11-20", batteryPercent: 45, calibratedBy: "الهيئة الوطنية للفحوصات الفنية", status: "EXPIRED" }
+        ],
+        dosimeters: parsed.employees ? parsed.employees.map((emp, idx) => ({
+          id: `dos-${emp.id}`,
+          employeeId: emp.id,
+          badgeCode: `TLD-26-${1000 + idx}`,
+          quarterDose: parseFloat((0.85 + (idx * 0.35)).toFixed(2)),
+          annualDose: parseFloat((2.15 + (idx * 1.05)).toFixed(2)),
+          lastReadingDate: new Date().toISOString().split('T')[0]
+        })) : []
+      };
+      changed = true;
+    }
+
     if (changed) {
       saveState(parsed);
     }
@@ -486,8 +519,14 @@ const syncStateFromFirestore = async () => {
 
 // --- GET Entire State ---
 app.get("/api/state", (req, res) => {
-  const state = readState();
-  res.json(state);
+  try {
+    console.log("[API] /api/state requested. Fetching current radiology state...");
+    const state = readState();
+    res.json(state);
+  } catch (error: any) {
+    console.error("[API Error] Failed to get state:", error);
+    res.status(500).json({ error: "Failed to read application state", details: error.message || String(error) });
+  }
 });
 
 // --- PUT System Settings ---
@@ -969,6 +1008,121 @@ app.delete("/api/backups/:id", (req, res) => {
     }
   } catch (err) {
     res.status(500).json({ error: "Failed to delete backup" });
+  }
+});
+
+// --- API Routing for Geiger Readings & Radiation Dosimetry Safety ---
+
+app.put("/api/radiation/rooms", (req, res) => {
+  try {
+    const state = readState();
+    if (!state.radiationData) {
+      return res.status(500).json({ error: "Radiation data not loaded" });
+    }
+    const { roomReadings } = req.body;
+    if (Array.isArray(roomReadings)) {
+      state.radiationData.roomReadings = roomReadings;
+      saveState(state);
+      res.json({ success: true, roomReadings: state.radiationData.roomReadings });
+    } else {
+      res.status(400).json({ error: "Invalid payload format. Must be an array of RoomRadiationReading" });
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to update room readings" });
+  }
+});
+
+app.post("/api/radiation/calibrations", (req, res) => {
+  try {
+    const state = readState();
+    if (!state.radiationData) {
+      return res.status(500).json({ error: "Radiation data not loaded" });
+    }
+    
+    const newCalibration = {
+      ...req.body,
+      id: req.body.id || `cal-${Date.now()}`
+    };
+
+    // If matches existing id, replace, else append
+    const idx = state.radiationData.calibrations.findIndex(c => c.id === newCalibration.id);
+    if (idx !== -1) {
+      state.radiationData.calibrations[idx] = newCalibration;
+    } else {
+      state.radiationData.calibrations.push(newCalibration);
+    }
+
+    saveState(state);
+    res.status(201).json(newCalibration);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to save calibration" });
+  }
+});
+
+app.put("/api/radiation/dosimeters/:id", (req, res) => {
+  try {
+    const state = readState();
+    if (!state.radiationData) {
+      return res.status(500).json({ error: "Radiation data not loaded" });
+    }
+    
+    const employeeId = req.params.id;
+    const { quarterDose, annualDose, badgeCode } = req.body;
+    
+    let dosimeter = state.radiationData.dosimeters.find(d => d.employeeId === employeeId);
+    if (!dosimeter) {
+      dosimeter = {
+        id: `dos-${employeeId}`,
+        employeeId,
+        badgeCode: badgeCode || `TLD-${Date.now()}`,
+        quarterDose: quarterDose || 0,
+        annualDose: annualDose || 0,
+        lastReadingDate: new Date().toISOString().split('T')[0]
+      };
+      state.radiationData.dosimeters.push(dosimeter);
+    } else {
+      if (typeof quarterDose === "number") dosimeter.quarterDose = quarterDose;
+      if (typeof annualDose === "number") dosimeter.annualDose = annualDose;
+      if (badgeCode) dosimeter.badgeCode = badgeCode;
+      dosimeter.lastReadingDate = new Date().toISOString().split('T')[0];
+    }
+
+    saveState(state);
+    res.json(dosimeter);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to update dosimetry reading" });
+  }
+});
+
+app.post("/api/radiation/reset", (req, res) => {
+  try {
+    const state = readState();
+    state.radiationData = {
+      roomReadings: [
+        { id: "room-1", roomName: "غرفة الأشعة السينية الرقمية (Digital X-Ray Suite)", roomCode: "XRAY-A", reading: 0.15, status: "SAFE", lastChecked: new Date().toISOString().split('T')[0] },
+        { id: "room-2", roomName: "جناح التصوير المقطعي محاكي المقطع (CT Scanner Room)", roomCode: "CT-SCAN-B", reading: 1.25, status: "WARNING", lastChecked: new Date().toISOString().split('T')[0] },
+        { id: "room-3", roomName: "غرفة الرنين المغناطيسي الفائق (MRI Suite)", roomCode: "MRI-C", reading: 0.04, status: "SAFE", lastChecked: new Date().toISOString().split('T')[0] },
+        { id: "room-4", roomName: "مختبر الطب النووي النشط (Nuclear Medicine)", roomCode: "NUC-MED-D", reading: 5.80, status: "DANGER", lastChecked: new Date().toISOString().split('T')[0] },
+        { id: "room-5", roomName: "غرفة فحص التصوير بالسونار (Ultrasound Room)", roomCode: "US-E", reading: 0.02, status: "SAFE", lastChecked: new Date().toISOString().split('T')[0] }
+      ],
+      calibrations: [
+        { id: "cal-1", deviceName: "عداد جيجر المحمول (Eberline Geiger Counter)", serialNumber: "GM-98241", calibrationDate: "2026-01-10", expiryDate: "2027-01-10", batteryPercent: 92, calibratedBy: "وكالة الأمان النووي والوقاية من الإشعاعات", status: "PASSED" },
+        { id: "cal-2", deviceName: "مقياس مسح الجرعات الغرفي (Ludlum Area Monitor 3)", serialNumber: "AM-43289", calibrationDate: "2025-08-15", expiryDate: "2026-08-15", batteryPercent: 88, calibratedBy: "معهد بحوث ومعايرة أجهزة القياس", status: "PASSED" },
+        { id: "cal-3", deviceName: "غرفة معايرة تسرب الأشعة (Fluke Pro-Ion Chamber)", serialNumber: "IC-11048", calibrationDate: "2024-11-20", expiryDate: "2025-11-20", batteryPercent: 45, calibratedBy: "الهيئة الوطنية للفحوصات الفنية", status: "EXPIRED" }
+      ],
+      dosimeters: state.employees ? state.employees.map((emp, idx) => ({
+        id: `dos-${emp.id}`,
+        employeeId: emp.id,
+        badgeCode: `TLD-26-${1000 + idx}`,
+        quarterDose: parseFloat((0.85 + (idx * 0.35)).toFixed(2)),
+        annualDose: parseFloat((2.15 + (idx * 1.05)).toFixed(2)),
+        lastReadingDate: new Date().toISOString().split('T')[0]
+      })) : []
+    };
+    saveState(state);
+    res.json(state.radiationData);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to reset radiation data" });
   }
 });
 

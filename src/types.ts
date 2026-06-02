@@ -162,6 +162,41 @@ export interface LeaveRequest {
   createdAt: string;
 }
 
+export interface RoomRadiationReading {
+  id: string;
+  roomName: string;
+  roomCode: string;
+  reading: number; // in uSv/h
+  status: "SAFE" | "WARNING" | "DANGER";
+  lastChecked: string;
+}
+
+export interface CalibrationLog {
+  id: string;
+  deviceName: string;
+  serialNumber: string;
+  calibrationDate: string;
+  expiryDate: string;
+  batteryPercent: number;
+  calibratedBy: string;
+  status: "PASSED" | "FAILED" | "EXPIRED";
+}
+
+export interface PersonalDosimeter {
+  id: string;
+  employeeId: string;
+  badgeCode: string;
+  quarterDose: number; // mSv
+  annualDose: number; // mSv
+  lastReadingDate: string;
+}
+
+export interface RadiationState {
+  roomReadings: RoomRadiationReading[];
+  calibrations: CalibrationLog[];
+  dosimeters: PersonalDosimeter[];
+}
+
 export interface RadiologyState {
   employees: Employee[];
   shifts: Shift[];
@@ -171,6 +206,7 @@ export interface RadiologyState {
   settings?: SystemSettings;
   leaves?: LeaveRequest[];
   notices?: AdminNotice[];
+  radiationData?: RadiationState;
 }
 
 export function hasPermission(employee: Employee | null, permission: keyof EmployeePermissions): boolean {

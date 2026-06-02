@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Bell, Heart, AlertCircle, RefreshCw, Layers, ShieldCheck, HelpCircle, Calendar, ShieldAlert, Users, Award, Database, Lock, KeyRound, Newspaper, LayoutDashboard } from "lucide-react";
+import { Bell, Heart, AlertCircle, RefreshCw, Layers, ShieldCheck, HelpCircle, Calendar, ShieldAlert, Users, Award, Database, Lock, KeyRound, Newspaper, LayoutDashboard, Radio } from "lucide-react";
 import { 
   Employee, 
   Shift, 
@@ -31,6 +31,7 @@ import DiagnosticsLab from "./components/DiagnosticsLab";
 import VacationRequests from "./components/VacationRequests";
 import AdminNotices from "./components/AdminNotices";
 import ManagerDashboard from "./components/ManagerDashboard";
+import RadiationDosimetry from "./components/RadiationDosimetry";
 
 export default function App() {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -42,13 +43,32 @@ export default function App() {
   const [settings, setSettings] = useState<SystemSettings | null>(null);
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [notices, setNotices] = useState<AdminNotice[]>([]);
+  const [radiationData, setRadiationData] = useState<any>(null);
 
   const [currentUser, setCurrentUser] = useState<Employee | null>(null);
   const [activeTab, setActiveTab] = useState<string>("schedule");
   const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "error">("idle");
   const [notifications, setNotifications] = useState<{ id: string; text: string; type: "alert" | "info" | "success" }[]>([]);
 
-  // 1. Fetch entire state from backend
+  // Dark Mode Support for safe operation in dark radiology reading rooms
+  const [darkMode, setDarkMode] = useState<boolean>(() => {
+    return localStorage.getItem("radiology_dark_mode") === "true";
+  });
+
+  useEffect(() => {
+    if (darkMode) {
+      document.body.classList.add("dark");
+      localStorage.setItem("radiology_dark_mode", "true");
+    } else {
+      document.body.classList.remove("dark");
+      localStorage.setItem("radiology_dark_mode", "false");
+    }
+  }, [darkMode]);
+
+  // 1. Fetch entire state from backend with auto-retry and self-healing logic during server boots
+  const retryCountRef = useRef(0);
+  const backupRetryCountRef = useRef(0);
+
   const fetchState = async () => {
     setSyncStatus("syncing");
     try {
@@ -69,9 +89,13 @@ export default function App() {
       setEvaluations(data.evaluations || []);
       setLeaves(data.leaves || []);
       setNotices(data.notices || []);
+      setRadiationData(data.radiationData || null);
       if (data.settings) {
         setSettings(data.settings);
       }
+
+      // Reset retry count once a valid JSON payload is loaded
+      retryCountRef.current = 0;
 
       // Get authenticated user from session/local storage
       const savedEmpId = localStorage.getItem("radiology_logged_emp_id");
@@ -90,11 +114,28 @@ export default function App() {
     } catch (err: any) {
       console.error(err);
       setSyncStatus("error");
-      triggerToast(err.message || "خطأ في الاتصال بالملقم السحابي. يرجى مراجعة الخادم.", "alert");
+      
+      const errMsg = err.message || String(err);
+      const isBootingError = !errMsg || 
+                             errMsg.includes("Failed to fetch") || 
+                             errMsg.includes("failed to fetch") || 
+                             errMsg.includes("ملقم الخدمة السحابي") ||
+                             errMsg.includes("Failed to load state");
+      
+      // Auto-retry if the server is still booting or warming up (max 5 retries, 3-sec intervals)
+      if (isBootingError && retryCountRef.current < 5) {
+        retryCountRef.current += 1;
+        console.log(`[Auto-healing] Server booting (connection issue). Retry #${retryCountRef.current} in 3 seconds...`);
+        setTimeout(() => {
+          fetchState();
+        }, 3000);
+      } else {
+        triggerToast("خطأ في الاتصال بالملقم السحابي. يرجى الانتظار ثوانٍ أو مراجعة الخادم.", "alert");
+      }
     }
   };
 
-  // 2. Fetch list of backups
+  // 2. Fetch list of backups with automatic retry
   const fetchBackupsList = async () => {
     try {
       const res = await fetch("/api/backups");
@@ -103,10 +144,21 @@ export default function App() {
         if (contentType && contentType.includes("application/json")) {
           const data = await res.json();
           setBackups(data);
+          backupRetryCountRef.current = 0;
+          return;
         }
       }
+      throw new Error("Failed to load backups");
     } catch (err) {
       console.error("Failed to load backups list", err);
+      // Auto-retry backups list load up to 5 times
+      if (backupRetryCountRef.current < 5) {
+        backupRetryCountRef.current += 1;
+        console.log(`[Auto-healing] Backups fetch failed. Retry #${backupRetryCountRef.current} in 3 seconds...`);
+        setTimeout(() => {
+          fetchBackupsList();
+        }, 3000);
+      }
     }
   };
 
@@ -879,6 +931,20 @@ export default function App() {
             <span className="bg-teal-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full font-sans shrink-0 animate-pulse">جديد</span>
           </button>
 
+          <button
+            onClick={() => setActiveTab("radiation")}
+            id="nav-tab-radiation"
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl font-black text-xs transition-all focus:outline-none cursor-pointer text-right w-full relative ${
+              activeTab === "radiation"
+                ? "bg-slate-900 text-teal-300 shadow-md border-r-4 border-teal-400"
+                : "text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            <Radio className={`h-4.5 w-4.5 shrink-0 ${activeTab === "radiation" ? "text-teal-400" : "text-rose-500 animate-pulse"}`} />
+            <span className="flex-grow font-extrabold text-slate-800">الأمان الإشعاعي وجهاز القياس</span>
+            <span className="bg-rose-600 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full font-sans shrink-0">حسّاس</span>
+          </button>
+
           {currentUser?.role !== UserRole.EMPLOYEE && (
             <button
               onClick={() => setActiveTab("backups")}
@@ -893,6 +959,46 @@ export default function App() {
               <span className="flex-grow">النسخ السحابي والأمن المتقدم</span>
             </button>
           )}
+
+          {/* Dark Mode Toggle Switch / خيار الوضع الليلي لغرف الأشعة المظلمة */}
+          <div className="mt-4 p-4 bg-slate-50 rounded-2xl border border-slate-200" id="dark-mode-sidebar-control">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 bg-indigo-100 rounded-lg text-indigo-600 flex items-center justify-center">
+                  {darkMode ? (
+                    <svg className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m0-11.307l.707.707m11.314 11.314l.707.707M12 8a4 4 0 110 8 4 4 0 010-8z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4 text-indigo-600" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
+                    </svg>
+                  )}
+                </span>
+                <div className="text-right">
+                  <h4 className="text-xs font-bold text-slate-800">الوضع الليلي (Dark Room)</h4>
+                  <p className="text-[10px] text-slate-500">غرف الأشعة المظلمة</p>
+                </div>
+              </div>
+              
+              <button
+                type="button"
+                onClick={() => setDarkMode(!darkMode)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-250 ease-in-out focus:outline-none ${
+                  darkMode ? "bg-teal-400" : "bg-slate-200"
+                }`}
+                role="switch"
+                aria-checked={darkMode}
+              >
+                <span
+                  aria-hidden="true"
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-250 ease-in-out ${
+                    darkMode ? "translate-x-0" : "-translate-x-5"
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
 
           {/* Backup Indicator Progress Box */}
           <div className="mt-8 p-4 bg-slate-50 rounded-2xl border border-slate-200 hidden lg:block">
@@ -1058,6 +1164,17 @@ export default function App() {
               <DiagnosticsLab
                 currentUser={currentUser}
                 triggerToast={triggerToast}
+              />
+            )}
+
+            {/* Radiation Dosimetry Hub Tab */}
+            {activeTab === "radiation" && (
+              <RadiationDosimetry
+                currentUser={currentUser}
+                employees={employees}
+                radiationData={radiationData}
+                triggerToast={triggerToast}
+                onUpdateState={fetchState}
               />
             )}
 
