@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Users, UserPlus, Trash2 } from 'lucide-react';
-import { db } from './firebaseConfig'; 
-import { collection, onSnapshot } from 'firebase/firestore';
+// تأكد من المسار الصحيح، استخدم ../ إذا كان الملف داخل مجلد
+import { db } from '../firebaseConfig'; 
+import { collection, onSnapshot, addDoc, deleteDoc, doc } from 'firebase/firestore';
 import { Employee } from '../types';
 
 export const EmployeeManager: React.FC = () => {
@@ -12,7 +13,6 @@ export const EmployeeManager: React.FC = () => {
   const [specialty, setSpecialty] = useState('MRI');
 
   useEffect(() => {
-    // الاتصال المباشر بـ Firebase
     const colRef = collection(db, 'employees');
     const unsub = onSnapshot(colRef, 
       (snapshot) => {
@@ -34,15 +34,23 @@ export const EmployeeManager: React.FC = () => {
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name) return;
-    await addDoc(collection(db, 'employees'), {
-      name, role, specialty,
-      avatar: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=120'
-    });
-    setName('');
+    try {
+      await addDoc(collection(db, 'employees'), {
+        name, role, specialty,
+        avatar: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=120'
+      });
+      setName('');
+    } catch (err) {
+      console.error("Error adding document: ", err);
+    }
   };
 
   const handleRemove = async (id: string) => {
-    await deleteDoc(doc(db, 'employees', id));
+    try {
+      await deleteDoc(doc(db, 'employees', id));
+    } catch (err) {
+      console.error("Error removing document: ", err);
+    }
   };
 
   if (loading) return <div className="p-20 text-center font-bold">جاري الاتصال بقاعدة بيانات المشفى وجلب السجلات...</div>;
