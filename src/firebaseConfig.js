@@ -1,7 +1,8 @@
-import { initializeApp, getApps } from "firebase/app";
+import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
+  // ... (إعداداتك كما هي) ...
   apiKey: "AIzaSyBd-w-8ilUbkbTgYTE6_xe5NOcPfelLxAA",
   authDomain: "optimistic-doodad-l9fkf.firebaseapp.com",
   projectId: "optimistic-doodad-l9fkf",
@@ -10,7 +11,7 @@ const firebaseConfig = {
   appId: "1:289992860788:web:02dbf98d5f9c1db5bc1d21"
 };
 
-// الحل الجذري: لا ننشئ التطبيق إلا إذا لم يكن موجوداً
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
+const app = initializeApp(firebaseConfig);
 
-export const db = getFirestore(app);
+// قم بتعديل هذا السطر وأضف اسم قاعدة البيانات التي تظهر في الصورة:
+export const db = getFirestore(app, "ai-studio-546797b1-c112-4e18-ae73-311f0d7d7108");
