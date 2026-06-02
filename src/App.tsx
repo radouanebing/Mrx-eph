@@ -1,21 +1,27 @@
-import React, { useState, useEffect } from "react";
-// ... (حافظ على باقي الاستيرادات كما هي)
+// 1. تأكد من وجود هذه الاستيرادات في أعلى الملف
 import { db } from "./firebaseConfig";
 import { collection, onSnapshot } from "firebase/firestore";
 
-export default function App() {
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  // ... (حافظ على باقي الـ states)
+// 2. داخل دالة App، استبدل useEffect القديم (الذي يحتوي على fetchState) بهذا المنطق الجديد:
+useEffect(() => {
+  setSyncStatus("syncing");
+  
+  // الاستماع لمجموعة الموظفين (employees)
+  const unsubEmployees = onSnapshot(collection(db, "employees"), (snapshot) => {
+    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Employee));
+    setEmployees(data);
+    setSyncStatus("idle");
+  }, (error) => {
+    console.error("Firebase Error:", error);
+    setSyncStatus("error");
+  });
 
-  // استبدال fetch بـ Firebase
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, "employees"), (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Employee));
-      setEmployees(data);
-      // هنا يمكنك أيضاً جلب الـ shifts والـ leaves من مجموعات أخرى في Firebase
-    });
-    return () => unsub();
-  }, []);
+  // ملاحظة: يمكنك إضافة onSnapshot لمجموعات أخرى (shifts, leaves) بنفس الطريقة هنا
+  
+  return () => {
+    unsubEmployees();
+  };
+}, []);
 
-  // احذف دالة fetchState القديمة التي تستخدم fetch، واستخدم هذا المنطق لجلب البيانات
-  // ...
+// 3. قم بتعليق (Comment) أو حذف دالة fetchState القديمة التي تستخدم fetch بالكامل
+// (لا تحذفها إذا كنت لا تزال تحتاجها لأجزاء أخرى، فقط ضع /* */ حولها)
