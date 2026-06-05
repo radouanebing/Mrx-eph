@@ -972,6 +972,106 @@ export default function SmartSchedulingPanel({
             </div>
           )}
 
+          {/* WhatsApp Integration Settings */}
+          {currentUser?.role === UserRole.MANAGER && (
+            <div className="mb-6 p-5 rounded-2xl bg-teal-950/20 border border-teal-500/30 animate-fade-in text-right">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-teal-500/10 pb-4 mb-4">
+                <div>
+                  <h4 className="text-sm font-black text-teal-400 flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
+                    <span>إعدادات بوابة ومزود خدمة WhatsApp لربط وتذكير الموظفين</span>
+                  </h4>
+                  <p className="text-xs text-indigo-200 mt-1">
+                    قم بتهيئة خادم الإرسال السحابي والآلي للرسائل أو كتابة قالب التذكير العام لإرسال إشعارات فورية عبر WhatsApp.
+                  </p>
+                </div>
+                
+                <label className="flex items-center gap-2.5 cursor-pointer bg-slate-950/60 px-4 py-2 rounded-xl border border-teal-500/30 hover:border-emerald-500 transition-colors">
+                  <input
+                    type="checkbox"
+                    className="accent-emerald-400 h-4.5 w-4.5 cursor-pointer"
+                    checked={settings?.whatsappEnabled === true}
+                    onChange={(e) => {
+                      onUpdateSettings({
+                        ...settings,
+                        showSmartControlToEmployees: settings?.showSmartControlToEmployees !== false,
+                        showAlgorithmToEmployees: settings?.showAlgorithmToEmployees !== false,
+                        whatsappEnabled: e.target.checked
+                      } as any);
+                    }}
+                  />
+                  <div>
+                    <span className="text-xs font-black text-white block">تفعيل بوابة الإرسال الآلي</span>
+                    <span className="text-[10px] text-teal-300 block">يقوم بإرسال رسائل خلفية باستخدام API بدلاً من الروابط اليدوية</span>
+                  </div>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-teal-300 block">رمز توكن Meta للوصول السحابي (Meta Graph Access Token)</label>
+                  <input
+                    type="password"
+                    placeholder="EAAW..."
+                    className="w-full text-xs bg-slate-950/90 border border-indigo-900 focus:border-teal-400 text-white rounded-xl py-2 px-3 focus:outline-none text-left font-mono"
+                    value={settings?.whatsappToken || ""}
+                    onChange={(e) => {
+                      onUpdateSettings({
+                        ...settings,
+                        showSmartControlToEmployees: settings?.showSmartControlToEmployees !== false,
+                        showAlgorithmToEmployees: settings?.showAlgorithmToEmployees !== false,
+                        whatsappToken: e.target.value
+                      } as any);
+                    }}
+                    dir="ltr"
+                  />
+                  <p className="text-[9px] text-slate-400">توكن صلاحيات مطور Meta لمشروع WhatsApp Business الخاص بك.</p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-teal-300 block">معرف رقم الهاتف المرسل (Phone Number ID)</label>
+                  <input
+                    type="text"
+                    placeholder="109283748293749"
+                    className="w-full text-xs bg-slate-950/90 border border-indigo-900 focus:border-teal-400 text-white rounded-xl py-2 px-3 focus:outline-none text-left font-mono"
+                    value={settings?.whatsappPhoneId || ""}
+                    onChange={(e) => {
+                      onUpdateSettings({
+                        ...settings,
+                        showSmartControlToEmployees: settings?.showSmartControlToEmployees !== false,
+                        showAlgorithmToEmployees: settings?.showAlgorithmToEmployees !== false,
+                        whatsappPhoneId: e.target.value
+                      } as any);
+                    }}
+                    dir="ltr"
+                  />
+                  <p className="text-[9px] text-slate-400">موصول بحساب الأعمال السحابي على Facebook App Console.</p>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <span className="text-[9px] text-teal-300">يستخدم {`{name}`} لاسم العامل، {`{date}`} للتاريخ، {`{type}`} للفترة، {`{room}`} للغرفة، {`{time}`} للوقت، {`{remaining}`} للوقت المتبقي للبدء.</span>
+                  <label className="text-[11px] font-bold text-teal-300">نص وقالب التذكير المخصص (العربية):</label>
+                </div>
+                <textarea
+                  rows={3}
+                  className="w-full text-xs bg-slate-950/90 border border-indigo-900 focus:border-teal-400 text-white rounded-xl py-2.5 px-3 focus:outline-none leading-relaxed"
+                  placeholder="السلام عليكم ورحمة الله وبركاته يا {name}، تذكير بمناوبتك المقررة في مصلحة الأشعة: اليوم {date} فترة {type} في {room} عند الساعة {time}. الوقت المتبقي للبدء: {remaining}."
+                  value={settings?.whatsappCustomMessageTemplate || ""}
+                  onChange={(e) => {
+                    onUpdateSettings({
+                      ...settings,
+                      showSmartControlToEmployees: settings?.showSmartControlToEmployees !== false,
+                      showAlgorithmToEmployees: settings?.showAlgorithmToEmployees !== false,
+                      whatsappCustomMessageTemplate: e.target.value
+                    } as any);
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
           {/* Sub-tabs switcher */}
           <div className="flex flex-wrap gap-2 bg-slate-950/70 p-1.5 rounded-2xl border border-indigo-800/40 mb-6 max-w-5xl">
             <button

@@ -1,6 +1,7 @@
 import React from "react";
 import { Activity, RefreshCw, LogOut, Shield } from "lucide-react";
 import { Employee, UserRole } from "../types.js";
+import AppLogo from "./AppLogo";
 
 interface HeaderProps {
   currentUser: Employee | null;
@@ -22,9 +23,7 @@ export default function Header({
   return (
     <nav className="flex flex-col md:flex-row items-center justify-between px-6 py-4 bg-white border-b border-slate-200 shadow-sm gap-4 transition-all" id="sleek-top-nav" dir="rtl">
       <div className="flex items-center gap-4">
-        <div className="bg-sky-600 p-2 text-white rounded-lg flex items-center justify-center shadow-lg shadow-sky-500/10">
-          <Activity className="w-6 h-6 animate-pulse" />
-        </div>
+        <AppLogo size="sm" className="shrink-0" />
         <div>
           <h1 className="text-xl font-black tracking-tight text-slate-900 font-sans leading-none flex items-center gap-2">
             <span className="bg-gradient-to-r from-teal-600 to-sky-600 bg-clip-text text-transparent">MRX_RN</span>

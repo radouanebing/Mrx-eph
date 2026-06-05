@@ -119,6 +119,11 @@ export interface BackupRecord {
 export interface SystemSettings {
   showAlgorithmToEmployees: boolean;
   showSmartControlToEmployees: boolean;
+  whatsappEnabled?: boolean;
+  whatsappToken?: string;
+  whatsappPhoneId?: string;
+  whatsappTemplateName?: string;
+  whatsappCustomMessageTemplate?: string;
 }
 
 export enum LeaveType {

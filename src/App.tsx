@@ -50,6 +50,166 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "error">("idle");
   const [notifications, setNotifications] = useState<{ id: string; text: string; type: "alert" | "info" | "success" }[]>([]);
 
+  // Shift notification system states
+  const [simulatedTime, setSimulatedTime] = useState<Date | null>(null);
+  const [notifiedShiftIds, setNotifiedShiftIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem("notified_shift_alerts");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [activeAlertShift, setActiveAlertShift] = useState<Shift | null>(null);
+
+  // Simple Web Audio API Synthesizer Chime
+  const playNotificationSound = () => {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(523.25, ctx.currentTime); // C5
+      osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.12); // E5
+      osc.frequency.setValueAtTime(783.99, ctx.currentTime + 0.24); // G5
+      osc.frequency.setValueAtTime(1046.50, ctx.currentTime + 0.36); // C6
+      
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.6);
+      
+      osc.start();
+      osc.stop(ctx.currentTime + 0.65);
+    } catch (e) {
+      console.warn("Audio warning: Chime blocked by browser policy until user click.", e);
+    }
+  };
+
+  // Automated Shift 1-Hour Pre-shift Alarm System Tick Loop
+  useEffect(() => {
+    if (!currentUser) {
+      setActiveAlertShift(null);
+      return;
+    }
+
+    const checkIncomingShifts = () => {
+      const refTime = simulatedTime || new Date();
+      
+      // Calculate any shift starting in <= 60 minutes for the current employee
+      const userShifts = shifts.filter(s => s.employeeId === currentUser.id);
+      
+      let closestShift: Shift | null = null;
+      let closestDiffMins: number = Infinity;
+
+      for (const shift of userShifts) {
+        // Construct start Date for the shift
+        const [year, month, day] = shift.date.split("-").map(Number);
+        let hour = 8;
+        let minute = 0;
+        
+        if (shift.startTime && shift.startTime.includes(":")) {
+          const cleanStart = shift.startTime.split(" ")[0];
+          const parts = cleanStart.split(":");
+          const h = parseInt(parts[0], 10);
+          const m = parseInt(parts[1], 10);
+          if (!isNaN(h)) hour = h;
+          if (!isNaN(m)) minute = m;
+        } else {
+          if (shift.type === "EVENING") hour = 14;
+          else if (shift.type === "NIGHT") hour = 20;
+        }
+
+        const shiftStartTime = new Date(year, month - 1, day, hour, minute, 0, 0);
+        const diffMs = shiftStartTime.getTime() - refTime.getTime();
+        const diffMinutes = Math.floor(diffMs / 60000);
+
+        // Standard notification condition: Starts in less than or equal to 60 minutes, and has not yet started
+        if (diffMinutes >= 0 && diffMinutes <= 60) {
+          if (diffMinutes < closestDiffMins) {
+            closestDiffMins = diffMinutes;
+            closestShift = shift;
+          }
+
+          // Trigger automated alert if not already notified
+          if (!notifiedShiftIds.includes(shift.id)) {
+            // Trigger toast
+            triggerToast(
+              `🔔 تنبيه ذاتي تلقائي: تبدأ مناوبتك المقررة في ${shift.room} بعد ${diffMinutes} دقيقة! يرجى الاستعداد والتحضير لمصلحة الأشعة.`,
+              "alert"
+            );
+            
+            // Play sound chime
+            playNotificationSound();
+
+            // Track this shift ID as notified
+            const updated = [...notifiedShiftIds, shift.id];
+            setNotifiedShiftIds(updated);
+            localStorage.setItem("notified_shift_alerts", JSON.stringify(updated));
+          }
+        }
+      }
+
+      // Live update the active banner alert if found
+      if (closestShift) {
+        setActiveAlertShift(closestShift);
+      } else {
+        setActiveAlertShift(null);
+      }
+    };
+
+    // Run check immediately
+    checkIncomingShifts();
+
+    // Check periodically every 5 seconds (especially for live countdown updates or fast simulator interactions!)
+    const checkTimer = setInterval(checkIncomingShifts, 5000);
+    return () => clearInterval(checkTimer);
+  }, [currentUser, shifts, simulatedTime, notifiedShiftIds]);
+
+  const handleTestNotificationSimulation = () => {
+    if (!currentUser) {
+      triggerToast("يرجى تسجيل الدخول أولاً كأي موظف لتفعيل وتجربة التنبيه التلقائي للمناوبات.", "alert");
+      return;
+    }
+
+    const refTime = simulatedTime || new Date();
+    // Schedule a shift starting in 55 minutes
+    const testShiftTime = new Date(refTime.getTime() + 55 * 60 * 1000);
+    
+    // Format date as YYYY-MM-DD
+    const y = testShiftTime.getFullYear();
+    const m = String(testShiftTime.getMonth() + 1).padStart(2, "0");
+    const d = String(testShiftTime.getDate()).padStart(2, "0");
+    const dateStr = `${y}-${m}-${d}`;
+    
+    // Format hours/minutes
+    const hh = String(testShiftTime.getHours()).padStart(2, "0");
+    const mm = String(testShiftTime.getMinutes()).padStart(2, "0");
+    const timeStr = `${hh}:${mm}`;
+
+    const testShift: Shift = {
+      id: `test-simulation-shift-${Date.now()}`,
+      employeeId: currentUser.id,
+      date: dateStr,
+      type: testShiftTime.getHours() < 14 ? ShiftType.MORNING : testShiftTime.getHours() < 20 ? ShiftType.EVENING : ShiftType.NIGHT,
+      room: "قسم الطوارئ الصدري والقلبي (جناح المحاكاة)",
+      hoursWorked: 6,
+      startTime: timeStr,
+      note: "مناوبة محاكاة مضافة فورياً لاختبار نظام التنبيه الذاتي للتبريرات الأمنية العالية قبل ساعة."
+    };
+
+    // Add to shifts array so the tick catches it
+    setShifts(prev => [testShift, ...prev]);
+    
+    // Flush the notified IDs for this test shift to let the chime ring
+    setNotifiedShiftIds(prev => prev.filter(id => id !== testShift.id));
+
+    triggerToast("🚀 تم تشييد مناوبة اختبار تبدأ في غضون 55 دقيقة للمطابقة! ترقب التنبيه الفوري ورنين المنبه.", "success");
+  };
+
   // Dark Mode Support for safe operation in dark radiology reading rooms
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     return localStorage.getItem("radiology_dark_mode") === "true";
@@ -762,6 +922,72 @@ export default function App() {
         })()
       )}
 
+      {/* 1-Hour Pre-Shift Automatic Glowing Alarm Alert Banner */}
+      {activeAlertShift && (
+        (() => {
+          const refTime = simulatedTime || new Date();
+          const [year, month, day] = activeAlertShift.date.split("-").map(Number);
+          let hour = 8;
+          let minute = 0;
+          
+          if (activeAlertShift.startTime && activeAlertShift.startTime.includes(":")) {
+            const parts = activeAlertShift.startTime.split(" ")[0].split(":");
+            const h = parseInt(parts[0], 10);
+            const m = parseInt(parts[1], 10);
+            if (!isNaN(h)) hour = h;
+            if (!isNaN(m)) minute = m;
+          } else {
+            if (activeAlertShift.type === "EVENING") hour = 14;
+            else if (activeAlertShift.type === "NIGHT") hour = 20;
+          }
+          
+          const shiftStartTime = new Date(year, month - 1, day, hour, minute, 0, 0);
+          const diffMs = shiftStartTime.getTime() - refTime.getTime();
+          const diffMinutes = Math.max(0, Math.floor(diffMs / 60000));
+          const diffSeconds = Math.max(0, Math.floor((diffMs % 60000) / 1000));
+
+          return (
+            <section className="bg-rose-600 text-white py-3.5 px-4 shadow-lg border-b border-rose-700 relative overflow-hidden transition-all duration-300 animate-pulse-slow" id="active-shift-notification-banner" dir="rtl">
+              <div className="absolute inset-0 bg-rose-700/20 backdrop-blur-[1px]" />
+              <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 relative z-10">
+                <div className="flex items-center gap-3">
+                  <span className="p-2 bg-white/10 rounded-xl flex items-center justify-center animate-bounce">
+                    <Bell className="h-5 w-5 text-teal-300 animate-pulse" />
+                  </span>
+                  <div className="text-right">
+                    <h3 className="font-black text-sm text-teal-100 flex items-center gap-2">
+                      <span>تنبيه مناوبة وشيك (مراقب الحضور التلقائي)</span>
+                      <span className="bg-amber-400 text-slate-950 px-2 py-0.5 rounded text-[10px] font-black animate-pulse">تبدأ قريباً!</span>
+                    </h3>
+                    <p className="text-xs text-slate-100 mt-0.5 font-semibold">
+                      يبدأ دورك المقرر في مصلحة الأشعة بـ <span className="bg-white/20 px-2 py-0.5 rounded text-white font-extrabold">{activeAlertShift.room}</span> خلال{" "}
+                      <span className="text-yellow-300 font-sans font-black text-sm tracking-wide bg-slate-950/40 px-2 py-0.5 rounded border border-white/10">
+                        {String(diffMinutes).padStart(2, "0")}:{String(diffSeconds).padStart(2, "0")}
+                      </span>{" "}
+                      دقيقة! (المقرر البدء عند الساعة {activeAlertShift.startTime || (activeAlertShift.type === "MORNING" ? "08:00 صباحاً" : activeAlertShift.type === "EVENING" ? "02:00 مساءً" : "08:00 مساءً")})
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => {
+                      // Discard/Dismiss active visual banner by marking it notified
+                      setNotifiedShiftIds(prev => [...prev, activeAlertShift.id]);
+                      setActiveAlertShift(null);
+                      triggerToast("تم تأكيد حضور واستلام التنبيه الذاتي بنجاح.", "success");
+                    }}
+                    className="text-xs bg-slate-950 border border-slate-700 hover:bg-slate-900 text-teal-300 font-black px-4 py-2 rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <span>موافق، تم تأكيد الحضور والاستعداد للمناوبة</span>
+                  </button>
+                </div>
+              </div>
+            </section>
+          );
+        })()
+      )}
+
       {/* Main Split Layout Container */}
       <div className="flex flex-col lg:flex-row flex-grow w-full max-w-8xl mx-auto" dir="rtl">
         
@@ -1012,6 +1238,87 @@ export default function App() {
             <p className="text-[9px] mt-2 text-slate-400 font-medium">مجلّد الأبحاث وسير العمال آمن تماماً</p>
           </div>
 
+          {/* Automated Shift Alerts & Alarm Setup Widget */}
+          <div className="mt-4 p-4 bg-slate-900 rounded-2xl border border-teal-500/20 shadow-md text-white" id="automated-alarm-center-sidebar">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="p-1.5 bg-teal-500/10 rounded-lg text-teal-400 flex items-center justify-center animate-pulse">
+                <Bell className="h-4 w-4" />
+              </span>
+              <div className="text-right">
+                <h4 className="text-xs font-black text-teal-300">منبه المناوبات التلقائي الذاتي</h4>
+                <p className="text-[10px] text-slate-400 font-medium">مراقب الحضور في مصلحة الأشعة</p>
+              </div>
+            </div>
+
+            <div className="text-slate-300 text-[10px] space-y-2 mb-3 leading-relaxed border-t border-slate-800 pt-2">
+              <p dir="rtl">
+                يقوم النظام تلقائياً بفحص جدولك الفصلي والمناوباتي للتنبيه قبل <strong className="text-yellow-400">ساعة كاملة (60 دقيقة)</strong> من بدء مهامك المقررة.
+              </p>
+              <div className="flex items-center justify-between text-[9px] bg-slate-950/40 p-2 rounded-lg border border-slate-800">
+                <span className="text-slate-400 font-medium">حالة منبه الواجهة:</span>
+                <span className="text-emerald-400 font-black flex items-center gap-1">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
+                  مراقب نشط
+                </span>
+              </div>
+            </div>
+
+            {/* Simulated Time Warp Tool to make testing extremely immediate and clean */}
+            <div className="bg-slate-950/50 p-2.5 rounded-xl border border-slate-800 mb-3 text-right">
+              <h5 className="text-[9px] font-bold text-slate-400 mb-1.5">محاكي ساعة وقت المشفى:</h5>
+              <div className="flex flex-col gap-1.5">
+                <div className="flex justify-between items-center text-[9px] text-slate-400">
+                  <span>الوقت المرجعي الحالي:</span>
+                  <span className="font-mono text-teal-400">
+                    {simulatedTime ? "توقيت محاكي" : "الوقت الحقيقي"}
+                  </span>
+                </div>
+                
+                <p className="font-mono text-[10px] tracking-tight bg-slate-900 border border-slate-800 p-1.5 rounded text-center font-bold text-white leading-none">
+                  {(simulatedTime || new Date()).toLocaleDateString("ar-EG", {
+                    month: "long",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit"
+                  })}
+                </p>
+
+                <div className="grid grid-cols-2 gap-1 mt-1">
+                  <button
+                    onClick={() => {
+                      const base = simulatedTime || new Date();
+                      setSimulatedTime(new Date(base.getTime() + 15 * 60 * 1000));
+                      triggerToast("⏩ تم تقديم وقت المحاكاة بـ 15 دقيقة بنجاح.", "info");
+                    }}
+                    className="text-[9px] bg-slate-800 hover:bg-slate-700 text-slate-200 py-1.5 px-1 rounded-lg border border-slate-750 transition-colors cursor-pointer block text-center"
+                  >
+                    +15 دقيقة
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSimulatedTime(null);
+                      setNotifiedShiftIds([]);
+                      triggerToast("🔄 تم استعادة الوقت الفعلي الحالي بنجاح.", "success");
+                    }}
+                    className="text-[9px] bg-slate-800 hover:bg-slate-700 text-rose-300 py-1.5 px-1 rounded-lg border border-slate-750 transition-colors cursor-pointer block text-center"
+                  >
+                    ضبط الحقيقي
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Test Simulation Buttons */}
+            <button
+              onClick={handleTestNotificationSimulation}
+              className="w-full flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-black rounded-xl text-slate-950 bg-gradient-to-r from-teal-400 to-sky-400 hover:from-teal-300 hover:to-sky-300 transition-all cursor-pointer shadow-md shadow-teal-500/15 hover:scale-[1.01] duration-150"
+            >
+              <Bell className="h-3.5 w-3.5 shrink-0" />
+              <span>اختبار التنبيه الفوري (55د)</span>
+            </button>
+          </div>
+
           {/* Change Password Sidebar Widget */}
           <div className="mt-4 p-4 bg-slate-50 rounded-2xl border border-slate-200">
             <h4 className="text-xs font-bold text-slate-800 mb-2 flex items-center gap-2">
@@ -1081,6 +1388,7 @@ export default function App() {
                 onUpdateEmployee={handleUpdateEmployee}
                 onUpdateSettings={handleUpdateSettings}
                 triggerToast={triggerToast}
+                simulatedTime={simulatedTime}
               />
             )}
 

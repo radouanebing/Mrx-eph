@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Plus, Trash2, Edit, CalendarDays, RefreshCw, AlertTriangle, Info, Clock, Check, ShieldAlert, X } from "lucide-react";
+import { Plus, Trash2, Edit, CalendarDays, RefreshCw, AlertTriangle, Info, Clock, Check, ShieldAlert, X, MessageCircle } from "lucide-react";
 import { Employee, Shift, ShiftType, StaffSpecialty, UserRole, hasPermission, SystemSettings } from "../types.js";
 import SmartSchedulingPanel from "./SmartSchedulingPanel";
 import { findOverlappingShift } from "../lib/shiftValidation";
@@ -17,6 +17,7 @@ interface ScheduleGridProps {
   onUpdateEmployee: (id: string, emp: Partial<Employee>) => void;
   onUpdateSettings: (newSettings: SystemSettings) => void;
   triggerToast: (text: string, type: "alert" | "info" | "success") => void;
+  simulatedTime?: Date | null;
 }
 
 export default function ScheduleGrid({
@@ -31,7 +32,8 @@ export default function ScheduleGrid({
   onReportSuddenAbsence,
   onUpdateEmployee,
   onUpdateSettings,
-  triggerToast
+  triggerToast,
+  simulatedTime
 }: ScheduleGridProps) {
   const [selectedDate, setSelectedDate] = useState<string>("2026-06-01");
   const [viewMode, setViewMode] = useState<"daily" | "monthly">("daily");
@@ -1043,6 +1045,118 @@ export default function ScheduleGrid({
     const isCurrentUserShift = currentUser?.id === shift.employeeId;
     const isConflicted = shifts.some(s => s.employeeId === shift.employeeId && s.date === shift.date && s.id !== shift.id);
 
+    // Calculate remaining time
+    let remainingText = "غير متوفر";
+    try {
+      const refTime = simulatedTime || new Date();
+      const [year, month, day] = shift.date.split("-").map(Number);
+      let hour = 8;
+      let minute = 0;
+      
+      if (shift.startTime && shift.startTime.includes(":")) {
+        const cleanStart = shift.startTime.split(" ")[0];
+        const parts = cleanStart.split(":");
+        const h = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10);
+        if (!isNaN(h)) hour = h;
+        if (!isNaN(m)) minute = m;
+      } else {
+        if (shift.type === "EVENING") hour = 14;
+        else if (shift.type === "NIGHT") hour = 20;
+      }
+
+      const shiftStartTime = new Date(year, month - 1, day, hour, minute, 0, 0);
+      const diffMs = shiftStartTime.getTime() - refTime.getTime();
+
+      if (diffMs < 0) {
+        const diffAbsMin = Math.abs(Math.floor(diffMs / 60000));
+        if (diffAbsMin < 480) {
+          const h = Math.floor(diffAbsMin / 60);
+          const m = diffAbsMin % 60;
+          remainingText = `بدأت منذ ${h > 0 ? `${h}س و ` : ""}${m}د`;
+        } else {
+          remainingText = "منتهية";
+        }
+      } else {
+        const diffMins = Math.floor(diffMs / 60000);
+        const days = Math.floor(diffMins / (24 * 60));
+        const hours = Math.floor((diffMins % (24 * 60)) / 60);
+        const mins = diffMins % 60;
+
+        let partsStr = [];
+        if (days > 0) partsStr.push(`${days} يوم`);
+        if (hours > 0) partsStr.push(`${hours} ساعة`);
+        if (mins > 0 || partsStr.length === 0) partsStr.push(`${mins} دقيقة`);
+        remainingText = partsStr.join(" و ");
+      }
+    } catch (e) {
+      console.error(e);
+    }
+
+    const handleSendWhatsApp = async () => {
+      if (!employee?.phone) {
+        triggerToast("لا يوجد رقم هاتف مسجل لهذا الموظف لتذكيره.", "alert");
+        return;
+      }
+
+      // Pre-format message variables
+      const shiftDate = shift.date;
+      let shiftTypeLabel = "صباحية";
+      if (shift.type === "EVENING") shiftTypeLabel = "مسائية";
+      else if (shift.type === "NIGHT") shiftTypeLabel = "ليلية";
+
+      const shiftTime = shift.startTime || (shift.type === "MORNING" ? "08:00 صباحاً" : shift.type === "EVENING" ? "02:00 مساءً" : "08:00 مساءً");
+      
+      const defaultMessage = `السلام عليكم ورحمة الله وبركاته يا ${employee.name}، تذكير بمناوبتك المقررة في مصلحة الأشعة:\n- اليوم والتاريخ: ${shiftDate}\n- الفترة: ${shiftTypeLabel}\n- القسم/الغرفة: ${shift.room}\n- الأوقات المقررة: ${shiftTime}\n- الوقت المتبقي للبدء: ${remainingText}\nنتمنى لكم التوفيق في مناوبتكم المتميزة!`;
+
+      // Read template from settings if customized
+      let customTemplate = settings?.whatsappCustomMessageTemplate || "";
+      let message = defaultMessage;
+
+      if (customTemplate) {
+        message = customTemplate
+          .replace(/{name}/g, employee.name || "")
+          .replace(/{date}/g, shiftDate || "")
+          .replace(/{type}/g, shiftTypeLabel)
+          .replace(/{room}/g, shift.room || "")
+          .replace(/{time}/g, shiftTime)
+          .replace(/{remaining}/g, remainingText);
+      }
+
+      try {
+        triggerToast("جاري إعداد تذكير WhatsApp المعتمد...", "info");
+        const res = await fetch("/api/whatsapp/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            employeeId: employee.id,
+            employeeName: employee.name,
+            phone: employee.phone,
+            message: message
+          })
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || "فشل الاتصال بخادم إرسال WhatsApp.");
+        }
+
+        const data = await res.json();
+        if (data.success) {
+          if (data.mode === "API_GATEWAY") {
+            triggerToast("🚀 " + data.message, "success");
+          } else if (data.mode === "SIMULATED_LINK" && data.redirectUrl) {
+            triggerToast("✅ تم تفعيل قالب التذكير بنجاح! سيتم فتح WhatsApp اليدوي للعميل.", "success");
+            window.open(data.redirectUrl, "_blank");
+          }
+        } else {
+          triggerToast(data.error || "تعذر إرسال التنبيه الفوري.", "alert");
+        }
+      } catch (err: any) {
+        triggerToast(err.message || "فشلت عملية معالجة إرسال WhatsApp.", "alert");
+      }
+    };
+
     return (
       <div 
         key={shift.id} 
@@ -1144,6 +1258,37 @@ export default function ScheduleGrid({
             ) : (
               <p className="text-[9px] text-slate-400 font-medium italic text-center w-full">لا يمكنك التعديل على مناوبة زملائك</p>
             )}
+          </div>
+        )}
+
+        {/* WhatsApp Reminder Direct Action (Available for Manager) */}
+        {currentUser?.role === UserRole.MANAGER && (
+          <div className="mt-3 pt-2 px-1 border-t border-dashed border-slate-200" id="whatsapp-sender-row">
+            <div className="flex flex-col gap-1.5">
+              <div className="flex justify-between items-center text-[10px]">
+                <span className="text-slate-400 font-medium font-sans">الوقت المتبقي للبدء:</span>
+                <span className="font-bold text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded border border-teal-150 font-sans tracking-wide">
+                  {remainingText}
+                </span>
+              </div>
+              <div className="flex justify-between items-center gap-2">
+                <div className="text-[9.5px] text-slate-400 font-sans truncate" title={employee?.phone || ""}>
+                  رقم: <span className="font-mono text-slate-600 bg-slate-100 px-1 py-0.5 rounded font-black">{employee?.phone || "غير مسجل"}</span>
+                </div>
+                {employee?.phone ? (
+                  <button
+                    onClick={handleSendWhatsApp}
+                    className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[9.5px] font-black px-2.5 py-1 rounded-xl shadow-xs hover:shadow-md transition-all cursor-pointer hover:scale-[1.02] duration-150"
+                    title="أرسل تذكير WhatsApp بجميع تفاصيل المناوبة والوقت المتبقي"
+                  >
+                    <MessageCircle className="h-3.5 w-3.5 text-white shrink-0" />
+                    <span>تذكير واتساب 💬</span>
+                  </button>
+                ) : (
+                  <span className="text-[9px] text-slate-400 italic">الجوال غير مسجل</span>
+                )}
+              </div>
+            </div>
           </div>
         )}
       </div>

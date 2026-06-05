@@ -535,9 +535,92 @@ app.put("/api/settings", (req, res) => {
   state.settings = {
     showAlgorithmToEmployees: req.body.showAlgorithmToEmployees === true,
     showSmartControlToEmployees: req.body.showSmartControlToEmployees === true,
+    whatsappEnabled: req.body.whatsappEnabled === true,
+    whatsappToken: req.body.whatsappToken || "",
+    whatsappPhoneId: req.body.whatsappPhoneId || "",
+    whatsappTemplateName: req.body.whatsappTemplateName || "",
+    whatsappCustomMessageTemplate: req.body.whatsappCustomMessageTemplate || "",
   };
   saveState(state);
   res.json(state.settings);
+});
+
+// --- POST Send WhatsApp Reminder Notification ---
+app.post("/api/whatsapp/send", async (req, res) => {
+  try {
+    const { employeeId, employeeName, phone, message } = req.body;
+    if (!phone) {
+      return res.status(400).json({ success: false, error: "رقم الهاتف الخاص بالموظف مطلوب لإرسال التذكير." });
+    }
+
+    const state = readState();
+    const settings = (state.settings || {}) as any;
+
+    const formattedPhone = phone.replace(/\D/g, "");
+    let finalPhone = formattedPhone;
+    if (formattedPhone.length === 10 && formattedPhone.startsWith("05")) {
+      finalPhone = "966" + formattedPhone.substring(1);
+    } else if (formattedPhone.length === 9 && formattedPhone.startsWith("5")) {
+      finalPhone = "966" + formattedPhone;
+    }
+
+    // Logic for Meta WhatsApp Cloud API if enabled and configured
+    if (settings.whatsappEnabled && settings.whatsappToken && settings.whatsappPhoneId) {
+      const url = `https://graph.facebook.com/v18.0/${settings.whatsappPhoneId}/messages`;
+      
+      console.log(`[WhatsApp API] Calling Meta Graph API for destination: ${finalPhone}`);
+      
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${settings.whatsappToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          recipient_type: "individual",
+          to: finalPhone,
+          type: "text",
+          text: {
+            body: message || "تذكير مناوبة مصلحة الأشعة"
+          }
+        })
+      });
+
+      const responseData = await response.json().catch(() => ({}));
+      
+      if (!response.ok) {
+        console.error("[WhatsApp API Error] Meta API Response:", responseData);
+        return res.status(502).json({
+          success: false,
+          error: "بوابة Meta WhatsApp رفضت الطلب. يرجى مراجعة إعدادات التوكن وصلاحيات الرقم.",
+          details: responseData
+        });
+      }
+
+      return res.json({
+        success: true,
+        mode: "API_GATEWAY",
+        message: "تم إرسال التذكير بنجاح آلياً عبر بوابة Meta WhatsApp Cloud API!",
+        details: responseData
+      });
+    }
+
+    // Default Web-link instruction or simulated success
+    console.log(`[WhatsApp Simulation] Reminder queued for ${employeeName} (${finalPhone}): ${message}`);
+    
+    // Return simulated response indicating the server-side logic was correctly calculated & queued
+    return res.json({
+      success: true,
+      mode: "SIMULATED_LINK",
+      message: "تم إنشاء التذكير ومعالجته ببيانات الموظف بنجاح لمقدمي الخدمة.",
+      redirectUrl: `https://wa.me/${finalPhone}?text=${encodeURIComponent(message)}`
+    });
+
+  } catch (error: any) {
+    console.error("[WhatsApp Integration Endpoint Error]:", error);
+    res.status(500).json({ success: false, error: "حدث خطأ غير متوقع أثناء معالجة رسالة WhatsApp السحابية.", details: error.message });
+  }
 });
 
 // --- employees ---

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Employee, UserRole } from "../types.js";
 import { ShieldCheck, Lock, User, Eye, EyeOff, Activity, AlertCircle, KeyRound, Loader2 } from "lucide-react";
 import { secureLogin } from "../lib/firebaseClient.js";
+import AppLogo from "./AppLogo";
 
 interface LoginPortalProps {
   employees: Employee[];
@@ -117,13 +118,8 @@ export default function LoginPortal({ employees, onLoginSuccess }: LoginPortalPr
         
         {/* Top Branding Header */}
         <div className="text-center space-y-3">
-          <div className="h-16 w-16 bg-gradient-to-tr from-teal-500 to-sky-500 text-slate-900 rounded-2xl flex items-center justify-center mx-auto shadow-xl shadow-teal-500/15">
-            <Activity className="h-9 w-9 animate-pulse" />
-          </div>
-          <div className="space-y-1">
-            <h2 className="text-xl font-black text-white tracking-tight">بوابة MRX_RN والتحكم الذكي بمصلحة الأشعة</h2>
-            <p className="text-xs text-slate-400">سجل الدخول لعرض مناوباتك، تبادل الساعات أو تسيير الإدارة</p>
-          </div>
+          <AppLogo size="lg" showText={true} className="mx-auto" />
+          <p className="text-xs text-slate-400 mt-2">سجل الدخول لعرض مناوباتك، تبادل الساعات أو تسيير الإدارة</p>
         </div>
 
         {/* Informational Credentials Helper Callout */}
