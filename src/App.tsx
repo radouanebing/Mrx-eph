@@ -272,15 +272,20 @@ export default function App() {
       
       setSyncStatus("idle");
     } catch (err: any) {
-      console.error(err);
       setSyncStatus("error");
       
-      const errMsg = err.message || String(err);
+      const errMsg = err?.message || String(err);
       const isBootingError = !errMsg || 
                              errMsg.includes("Failed to fetch") || 
                              errMsg.includes("failed to fetch") || 
                              errMsg.includes("ملقم الخدمة السحابي") ||
                              errMsg.includes("Failed to load state");
+      
+      if (isBootingError) {
+        console.warn("[Auto-healing] Quiet warning: Server booting / connection issue.", errMsg);
+      } else {
+        console.error("Fatal state loading failure:", err);
+      }
       
       // Auto-retry if the server is still booting or warming up (max 5 retries, 3-sec intervals)
       if (isBootingError && retryCountRef.current < 5) {
@@ -309,8 +314,19 @@ export default function App() {
         }
       }
       throw new Error("Failed to load backups");
-    } catch (err) {
-      console.error("Failed to load backups list", err);
+    } catch (err: any) {
+      const errMsg = err?.message || String(err);
+      const isBootingError = !errMsg || 
+                             errMsg.includes("Failed to fetch") || 
+                             errMsg.includes("failed to fetch") || 
+                             errMsg.includes("Failed to load backups");
+
+      if (isBootingError) {
+        console.warn("[Auto-healing] Quiet warning: Backups load failed during boot.", errMsg);
+      } else {
+        console.error("Fatal backups loading failure:", err);
+      }
+
       // Auto-retry backups list load up to 5 times
       if (backupRetryCountRef.current < 5) {
         backupRetryCountRef.current += 1;
