@@ -19,6 +19,21 @@ export default function LoginPortal({ employees, onLoginSuccess }: LoginPortalPr
   // Filter only active employees
   const activeEmployees = employees.filter((e) => e.active !== false);
 
+  const managerEmp = activeEmployees.find(
+    (e) => e.role === UserRole.MANAGER || e.name.includes("المدير") || e.name.includes("رضوان")
+  );
+  const staffEmp = activeEmployees.find(
+    (e) => e.name.includes("رداس") || e.name.includes("لطفي") || (e.role !== UserRole.MANAGER && e.name !== "")
+  );
+
+  const selectEmployeeQuickly = (emp: Employee | undefined) => {
+    if (emp) {
+      setSelectedEmpId(emp.id);
+      setPassword(emp.password || "123456");
+      setError(null);
+    }
+  };
+
   // Inject Google reCAPTCHA v2 Script dynamically on mount
   useEffect(() => {
     if (typeof window !== "undefined" && !document.getElementById("recaptcha-script-src")) {
@@ -131,15 +146,31 @@ export default function LoginPortal({ employees, onLoginSuccess }: LoginPortalPr
           <p className="text-[10px] text-slate-400 leading-relaxed">
             جميع حسابات الكادر مسجلة بكلمة مرور افتراضية موحدة وهي: <strong className="text-white bg-slate-750 px-1.5 py-0.5 rounded border border-slate-650 font-mono text-[11px]">123456</strong>. يمكنك الاختيار أدناه:
           </p>
-          <div className="grid grid-cols-2 gap-1.5 pt-1 text-[10px]">
-            <div className="bg-slate-800/85 p-2 rounded-xl border border-slate-700/50">
+          <div className="grid grid-cols-2 gap-2 pt-1 text-[10px]">
+            <button
+              type="button"
+              onClick={() => selectEmployeeQuickly(managerEmp)}
+              className={`text-right p-2.5 rounded-xl border transition-all cursor-pointer transform hover:scale-[1.02] active:scale-[0.98] ${
+                managerEmp && selectedEmpId === managerEmp.id
+                  ? "bg-teal-500/15 border-teal-500 shadow-md shadow-teal-500/10 ring-1 ring-teal-500/30"
+                  : "bg-slate-800/85 border-slate-700/50 hover:border-teal-500/40 hover:bg-slate-750"
+              }`}
+            >
               <span className="block text-slate-400">المدير (صلاحية كاملة):</span>
-              <strong className="text-sky-300">د. أحمد منصور</strong>
-            </div>
-            <div className="bg-slate-800/85 p-2 rounded-xl border border-slate-700/50">
+              <strong className="text-sky-300 font-bold block mt-0.5">د. أحمد منصور</strong>
+            </button>
+            <button
+              type="button"
+              onClick={() => selectEmployeeQuickly(staffEmp)}
+              className={`text-right p-2.5 rounded-xl border transition-all cursor-pointer transform hover:scale-[1.02] active:scale-[0.98] ${
+                staffEmp && selectedEmpId === staffEmp.id
+                  ? "bg-amber-500/15 border-amber-500 shadow-md shadow-amber-500/10 ring-1 ring-amber-500/30"
+                  : "bg-slate-800/85 border-slate-700/50 hover:border-amber-500/40 hover:bg-slate-750"
+              }`}
+            >
               <span className="block text-slate-400">الموظف (صلاحية غلق وتحديد):</span>
-              <strong className="text-amber-300">خالد العتيبي</strong>
-            </div>
+              <strong className="text-amber-300 font-bold block mt-0.5">خالد العتيبي</strong>
+            </button>
           </div>
         </div>
 
