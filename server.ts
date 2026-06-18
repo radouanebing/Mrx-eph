@@ -31,6 +31,12 @@ app.use(express.json());
 
 // Debugging incoming request logging middleware
 app.use((req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
   console.log(`[Request logger] ${req.method} ${req.url} - Content-Type requested: ${req.headers.accept}`);
   next();
 });
@@ -1262,31 +1268,50 @@ app.post("/api/gemini/diagnostics-report", async (req, res) => {
 
 // --- VITE MIDDLEWARE HANDLING OR STAGE SERVING ---
 async function startServer() {
-  // Sync latest cloud state on startup as non-blocking background process
-  if (db) {
-    console.log("[Startup] Initializing background cloud synchronization from Firestore...");
-    syncStateFromFirestore().catch((err) => {
-      console.error("[Startup Sync] Non-blocking background sync failed:", err);
-    });
-  }
+  try {
+    // Sync latest cloud state on startup as non-blocking background process
+    if (db) {
+      console.log("[Startup] Initializing background cloud synchronization from Firestore...");
+      syncStateFromFirestore().catch((err) => {
+        console.error("[Startup Sync] Non-blocking background sync failed:", err);
+      });
+    }
 
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
-  }
+    if (process.env.NODE_ENV !== "production") {
+      try {
+        console.log("[Startup] Creating Vite dev server middleware...");
+        const vite = await createViteServer({
+          server: { middlewareMode: true },
+          appType: "spa",
+        });
+        app.use(vite.middlewares);
+        console.log("[Startup] Vite dev server middleware integrated successfully.");
+      } catch (viteError) {
+        console.error("[Startup Error] Failed to start Vite dev server, falling back to static build check:", viteError);
+        const distPath = path.join(process.cwd(), "dist");
+        if (fs.existsSync(distPath)) {
+          app.use(express.static(distPath));
+          app.get("*", (req, res) => {
+            res.sendFile(path.join(distPath, "index.html"));
+          });
+        } else {
+          console.warn("[Startup Warning] No 'dist' folder found to fall back on.");
+        }
+      }
+    } else {
+      const distPath = path.join(process.cwd(), "dist");
+      app.use(express.static(distPath));
+      app.get("*", (req, res) => {
+        res.sendFile(path.join(distPath, "index.html"));
+      });
+    }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[Radiology Staff Manager Server] Running on http://0.0.0.0:${PORT}`);
-  });
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`[Radiology Staff Manager Server] Running on http://0.0.0.0:${PORT}`);
+    });
+  } catch (error) {
+    console.error("[Startup Critical Error] The server failed to start:", error);
+  }
 }
 
 startServer();
